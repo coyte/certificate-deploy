@@ -1,0 +1,17 @@
+Change certificate vCenter:
+ssh into vcenter
+copy cert.pem, privkey.pem to /root
+create  the fullchain.pem yourself by combining the contents of
+	https://letsencrypt.org/certs/lets-encrypt-x3-cross-signed.pem.txt
+	and
+	https://www.identrust.com/dst-root-ca-x3
+	into fullchain.pem
+run certificate manager: /usr/lib/vmware-vmca/bin/certificate-manager
+select option 1
+select option 2
+fill in /root/cert.pem
+fill in /root/privkey.pem
+fill in /root/fullchain.pem
+Acknowledge with Y
+watch the thing ramble about for 10 minutes
+Done.

@@ -1,0 +1,4 @@
+Get certs for esxi host
+cp privkey.pem /etc/vmware/ssl/rui.key
+cp fullchain.pem /etc/vmware/ssl/rui.crt
+reboot esxi

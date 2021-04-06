@@ -1,0 +1,9 @@
+
+
+Copy the privkey and cert  files to /etc/webmin
+Rename privkey.pem to miniserv.pem
+rename cert.pem to miniserv.cert
+
+add below lines to miniserv.conf
+  certfile=/etc/webmin/miniserv.cert
+  keyfile=/etc/webmin/miniserv.pem
