@@ -1,11 +1,11 @@
 Change certificate vCenter:
 ssh into vcenter
-copy cert.pem, privkey.pem to /root
-create  the fullchain.pem yourself by combining the contents of
-	https://letsencrypt.org/certs/lets-encrypt-x3-cross-signed.pem.txt
-	and
-	https://www.identrust.com/dst-root-ca-x3
-	into fullchain.pem
+copy latest cert.pem, privkey.pem, fullchain.pem to /root
+//create  the fullchain.pem yourself by combining the contents of
+//	https://letsencrypt.org/certs/lets-encrypt-x3-cross-signed.pem.txt
+//	and
+//	https://www.identrust.com/dst-root-ca-x3
+//	into fullchain.pem
 run certificate manager: /usr/lib/vmware-vmca/bin/certificate-manager
 select option 1
 select option 2
@@ -15,3 +15,12 @@ fill in /root/fullchain.pem
 Acknowledge with Y
 watch the thing ramble about for 10 minutes
 Done.
+
+Sometime a service fails to start and the whole process is reverted.
+Solution is often to temporarily disable the service, run the cert upgrade process, enable the service and start the service.
+Starting may fail, retry..
+cmon-cli -s <svcname> get status
+cmon-cli -S DISABLED -U <svcname>
+cmon-cli -S AUTOMATIC -U <svcname>
+cmon-cli -i <svcname> start
+
