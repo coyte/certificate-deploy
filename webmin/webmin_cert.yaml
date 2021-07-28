@@ -1,0 +1,83 @@
+# script will first compare current cert with new cert, if they are identicle the script with fail
+# else the script will fetch the cert files from NAS and store them locally, then copy them to webin
+# finally the contents of /etc/webmin/miniserv.conf are checked for required content, if required webmin is restarted
+
+- name: Webmin certificate check
+  hosts: dns.teekens.info
+  tasks:
+    - name: Get the proper filename from the symlink on NAS
+      stat:
+        path: /volume1/dockerdata/dnsrobocert/letsencrypt/live/dns.teekens.info/privkey.pem
+        checksum_algorithm: sha1
+      delegate_to: nas.teekens.info
+      register: newcert
+
+    - name: Checksum for new cert filename using previous stat result
+      stat:
+        path: "{{ newcert.stat.lnk_source }}"
+        checksum_algorithm: sha1
+      delegate_to: nas.teekens.info
+      register: newcert
+
+    - name: Checksum for actual cert fails when file are identical, no new certs
+      stat:
+        path: /etc/webmin/miniserv.pem
+        checksum_algorithm: sha1
+      register: currcert
+
+    - block:
+        - name: Find symlinks
+          find:
+            paths: /volume1/dockerdata/dnsrobocert/letsencrypt/live/dns.teekens.info
+            file_type: link
+          delegate_to: nas.teekens.info
+          register: files_2_fetch
+
+        - name: use fetch to get the files
+          fetch:
+            src: "{{ item.path }}"
+            dest: /tmp/
+            flat: yes
+          with_items: "{{ files_2_fetch.files }}"
+          delegate_to: nas.teekens.info
+
+        - name: copy the certificate to webmin
+          copy:
+            src: /tmp/cert.pem
+            dest: /etc/webmin/miniserv.cert
+            owner: root
+            group: bin
+            mode: "0644"
+            backup: yes
+
+        - name: copy the privkey to webmin
+          copy:
+            src: /tmp/privkey.pem
+            dest: /etc/webmin/miniserv.pem
+            owner: root
+            group: users
+            mode: "0644"
+            backup: yes
+
+        - name: Verify config file
+          shell: grep -c "^certfile=/etc/webmin/miniserv.cert" /etc/webmin/miniserv.conf || true
+          register: test_grep
+
+        - name: add certfile line to config if not present
+          lineinfile:
+            dest: /etc/webmin/miniserv.conf
+            line: certfile=/etc/webmin/miniserv.cert
+          when: test_grep.stdout == "0"
+
+        - name: restart webmin
+          service:
+            name: webmin
+            state: restarted
+      when: newcert.stat.checksum != currcert.stat.checksum
+#Copy the privkey and cert  files to /etc/webmin
+#Rename privkey.pem to miniserv.pem
+#rename cert.pem to miniserv.cert
+
+#add below lines to miniserv.conf
+# certfile=/etc/webmin/miniserv.cert
+# keyfile=/etc/webmin/miniserv.pem

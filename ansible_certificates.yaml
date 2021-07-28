@@ -1,0 +1,9 @@
+---
+# Webmin (dns.teekens.info)
+- ansible.builtin.import_playbook: webmin/webmin_cert.yaml
+
+# Unifi
+- ansible.builtin.import_playbook: unifi/unifi_cert.yaml
+
+#Synology
+- ansible.builtin.import_playbook: synology/syno_cert.yaml

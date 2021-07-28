@@ -1,0 +1,121 @@
+- name: unifi certificate check and update
+  hosts: unifi.teekens.info
+  vars:
+    cert_tmp: /root/cert_tmp/
+    cert_dest: /var/lib/unifi/
+
+  tasks:
+    - name: Get the proper filename from the symlink on NAS
+      stat:
+        path: /volume1/dockerdata/dnsrobocert/letsencrypt/live/unifi.teekens.info/privkey.pem
+        checksum_algorithm: sha1
+      delegate_to: nas.teekens.info
+      register: newcert
+
+    - name: Checksum for new cert filename using previous stat result
+      stat:
+        path: "{{ newcert.stat.lnk_source }}"
+        checksum_algorithm: sha1
+      delegate_to: nas.teekens.info
+      register: newcert
+
+    - name: Checksum for actual cert fails when file are identical, no new certs
+      stat:
+        path: "{{cert_tmp}}privkey.pem"
+        checksum_algorithm: sha1
+      register: currcert
+
+    - block:
+        - name: Find symlinks
+          find:
+            paths: /volume1/dockerdata/dnsrobocert/letsencrypt/live/unifi.teekens.info
+            file_type: link
+          delegate_to: nas.teekens.info
+          register: files_2_fetch
+
+        - name: Create a directory
+          file:
+            path: /tmp/unifi
+            state: directory
+          delegate_to: localhost
+
+        - name: use fetch to get the files
+          fetch:
+            src: "{{ item.path }}"
+            dest: /tmp/unifi/
+            flat: yes
+          with_items: "{{ files_2_fetch.files }}"
+          delegate_to: nas.teekens.info
+
+        - name: Find certificate files locally
+          find:
+            paths: /tmp/unifi
+            file_type: file
+          delegate_to: localhost
+          register: files_2_copy
+
+        #    - debug: var=files_2_copy
+        - name: Delete existing keytool
+          file:
+            state: absent
+            path: "{{ cert_tmp }}keystore"
+
+        - name: copy the certificate to unifi
+          copy:
+            src: "{{ item.path }}"
+            dest: "{{ cert_tmp }}"
+            owner: root
+            group: root
+            mode: "0644"
+            backup: yes
+          with_items: "{{ files_2_copy.files }}"
+
+        - name: run openssl command
+          shell: openssl pkcs12 -export \
+            -in {{ cert_tmp }}fullchain.pem \
+            -inkey {{ cert_tmp }}privkey.pem \
+            -out {{ cert_tmp }}cert_and_key.p12 \
+            -name tomcat -CAfile {{ cert_tmp }}chain.pem \
+            -caname root -password pass:aaa
+          register: openssl_output
+        - debug: var=openssl_output
+
+        - name: run keytool command
+          shell:
+            keytool -importkeystore -srcstorepass aaa -deststorepass aircontrolenterprise -destkeypass aircontrolenterprise \
+            -srckeystore {{ cert_tmp }}cert_and_key.p12 \
+            -srcstoretype PKCS12 \
+            -alias tomcat \
+            -keystore {{ cert_tmp }}keystore
+          register: keytool1_output
+        - debug: var=keytool1_output
+
+        - name: run keytool2 command
+          shell:
+            keytool -import -trustcacerts -alias unifi -deststorepass aircontrolenterprise \
+            -file {{ cert_tmp }}chain.pem \
+            -noprompt \
+            -keystore {{ cert_tmp }}keystore
+          register: keytool2_output
+        - debug: var=keytool2_output
+
+        - name: set owner keystore
+          shell: chown unifi:unifi {{ cert_tmp }}keystore
+          register: setowner_output
+        - debug: var=setowner_output
+
+        - name: set permissions keystore
+          shell: chmod 640 {{ cert_tmp }}keystore
+          register: setperm_output
+        - debug: var=setperm_output
+
+        - name: move keystore
+          shell: mv {{ cert_tmp }}keystore {{ cert_dest }}
+          register: mvkeystore_output
+        - debug: var=mvkeystore_output
+
+        - name: restart unifi
+          service:
+            name: unifi
+            state: restarted
+      when: newcert.stat.checksum != currcert.stat.checksum

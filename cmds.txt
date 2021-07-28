@@ -1,0 +1,3 @@
+ansible all -m ping -i inventory -u root
+
+ansible-playbook ansible_certificates.yaml -i inventory

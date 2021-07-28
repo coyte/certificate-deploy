@@ -1,0 +1,42 @@
+all:
+  vars:
+    ansible_user: root
+  hosts:
+  children:
+    vsphere:
+      hosts:
+        esxi01.nilab.io:
+          ansible_host: 10.0.8.10
+          ansible_python_interpreter: /bin/python
+        esxi02.teekens.info:
+          ansible_host: 10.0.2.6
+          ansible_python_interpreter: /bin/python
+    vcenter:
+      hosts:
+        vcenter.nilab.io:
+          ansible_host: 10.0.8.9
+          ansible_python_interpreter: /usr/bin/python
+        vcenter.teekens.info:
+          ansible_host: 10.0.2.12
+          ansible_python_interpreter: /usr/bin/python
+    unifi:
+      hosts:
+        unifi.teekens.info:
+          ansible_host: 10.0.1.5
+          ansible_python_interpreter: /usr/bin/python
+    synology:
+      hosts:
+        nas.teekens.info:
+          ansible_host: 10.0.2.8
+          ansible_python_interpreter: /usr/bin/python
+    idrac:
+      hosts:
+         idrac.nilab.io:
+          ansible_host: 10.0.7.7
+          ansible_python_interpreter: /usr/bin/python
+    webmin:
+      hosts:
+        dns.teekens.info:
+          ansible_host: 10.0.2.5
+          ansible_python_interpreter: /usr/bin/python3
+

@@ -1,0 +1,118 @@
+- name: Synology certificate check and update
+  hosts: nas.teekens.info
+  vars:
+    cert_tmp: /root/cert_tmp/
+    web_dest: /usr/local/etc/certificate/WebStation/vhost_5dd5a8fe-5989-4791-b97a-0d231fd491c7/
+    backup_dest: /usr/local/etc/certificate/ActiveBackup/ActiveBackup/
+    ftpd_dest: /usr/syno/etc/certificate/smbftpd/ftpd/
+    default_dest: /usr/syno/etc/certificate/system/default/
+
+  tasks:
+    - name: Get the proper filename from the symlink on NAS
+      stat:
+        path: /volume1/dockerdata/dnsrobocert/letsencrypt/live/nas.teekens.info/privkey.pem
+        checksum_algorithm: sha1
+      delegate_to: nas.teekens.info
+      register: newcert
+
+    - name: Checksum for new cert filename using previous stat result
+      stat:
+        path: "{{ newcert.stat.lnk_source }}"
+        checksum_algorithm: sha1
+      register: newcert
+
+    - name: Checksum for actual cert fails when file are identical, no new certs
+      stat:
+        path: "{{default_dest}}privkey.pem"
+        checksum_algorithm: sha1
+      register: currcert
+
+    - block:
+        - name: Find symlinks
+          find:
+            paths: /volume1/dockerdata/dnsrobocert/letsencrypt/live/nas.teekens.info
+            file_type: link
+          register: files_2_fetch
+
+        - name: Create a directory
+          file:
+            path: /tmp/nas
+            state: directory
+          delegate_to: localhost
+
+        - name: use fetch to get the files
+          fetch:
+            src: "{{ item.path }}"
+            dest: /tmp/nas/
+            flat: yes
+          with_items: "{{ files_2_fetch.files }}"
+
+        - name: Find certificate files locally
+          find:
+            paths: /tmp/nas
+            file_type: file
+          delegate_to: localhost
+          register: files_2_copy
+
+        #    - debug: var=files_2_copy
+
+        - name: copy the certificate to web
+          copy:
+            src: "{{ item.path }}"
+            dest: "{{ web_dest }}"
+            owner: root
+            group: root
+            mode: "0644"
+            backup: yes
+          with_items: "{{ files_2_copy.files }}"
+
+        - name: copy the certificate to ActiveBackup
+          copy:
+            src: "{{ item.path }}"
+            dest: "{{ backup_dest }}"
+            owner: root
+            group: root
+            mode: "0644"
+            backup: yes
+          with_items: "{{ files_2_copy.files }}"
+
+        - name: copy the certificate to ftpd
+          copy:
+            src: "{{ item.path }}"
+            dest: "{{ ftpd_dest }}"
+            owner: root
+            group: root
+            mode: "0644"
+            backup: yes
+          with_items: "{{ files_2_copy.files }}"
+
+        - name: copy the certificate to default location
+          copy:
+            src: "{{ item.path }}"
+            dest: "{{ default_dest }}"
+            owner: root
+            group: root
+            mode: "0644"
+            backup: yes
+          with_items: "{{ files_2_copy.files }}"
+
+        - name: restart webstation
+          shell: /usr/syno/sbin/synoservicectl --reload pkgctl-WebStation
+          register: webstation_output
+        - debug: var=webstation_output
+
+        - name: restart ActiveBackup
+          shell: /usr/syno/sbin/synoservicectl --reload pkgctl-ActiveBackup
+          register: ActiveBackup_output
+        - debug: var=ActiveBackup_output
+
+        - name: restart Apache2.4
+          shell: /usr/syno/sbin/synoservicectl --reload pkgctl-Apache2.4
+          register: Apache_output
+        - debug: var=Apache_output
+
+        - name: restart nginx
+          shell: /usr/syno/sbin/synoservicectl --reload nginx
+          register: nginx_output
+        - debug: var=nginx_output
+      when: newcert.stat.checksum != currcert.stat.checksum

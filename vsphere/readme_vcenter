@@ -19,8 +19,8 @@ Done.
 Sometime a service fails to start and the whole process is reverted.
 Solution is often to temporarily disable the service, run the cert upgrade process, enable the service and start the service.
 Starting may fail, retry..
-cmon-cli -s <svcname> get status
-cmon-cli -S DISABLED -U <svcname>
-cmon-cli -S AUTOMATIC -U <svcname>
-cmon-cli -i <svcname> start
+vmon-cli -s <svcname> get status
+vmon-cli -S DISABLED -U <svcname>
+vmon-cli -S AUTOMATIC -U <svcname>
+vmon-cli -i <svcname> start
 
