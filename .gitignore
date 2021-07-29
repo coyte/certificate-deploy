@@ -1,3 +1,4 @@
 .DS_Store
 inventory
 inventory_niels
+idrac/idrac_credentials.yaml

@@ -85,18 +85,22 @@
             backup: yes
           with_items: "{{ files_2_copy.files }}"
 
+        - name: Include vars of stuff.yaml into the 'stuff' variable (2.2).
+          include_vars:
+            file: idrac_credentials.yaml
+
         - name: Run racadm to import privkey.pem
-          shell: racadm -r idrac-1.nilab.io -u root -p Admin@123 sslkeyupload -f {{ cert_tmp }}privkey.pem -t 1
+          shell: racadm -r idrac-1.nilab.io -u {{ user }} -p {{ userpass }} sslkeyupload -f {{ cert_tmp }}privkey.pem -t 1
         #          register: privkeyUpload_output
         #        - debug: var=privkeyUpload_output
 
         - name: Run racadm to import fullchain.pem
-          shell: racadm -r idrac-1.nilab.io -u root -p Admin@123 sslcertupload -f {{ cert_tmp }}fullchain.pem -t 1
+          shell: racadm -r idrac-1.nilab.io -u {{ user }} -p {{ userpass }} sslcertupload -f {{ cert_tmp }}fullchain.pem -t 1
         #          register: fullchainUpload_output
         #        - debug: var=fullchainUpload_output
 
         - name: Run racadm to soft reset
-          shell: racadm -r idrac-1.nilab.io -u root -p Admin@123 racreset soft -f
+          shell: racadm -r idrac-1.nilab.io -u {{ user }} -p {{ userpass }} racreset soft -f
       #          register: idracReset_output
       #        - debug: var=idracReset_output
       when: newcert.stat.checksum != currcert.stat.checksum
