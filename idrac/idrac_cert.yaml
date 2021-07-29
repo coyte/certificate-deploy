@@ -1,0 +1,102 @@
+- name: idrac certificate check and update
+  hosts: controlplane.teekens.info #we will install and run idracadmin from this host
+  vars:
+    cert_tmp: /root/cert_tmp/idrac/ #Store cert file on conrolplane
+    cert_ans: /tmp/idrac/ #Store cert file on ansible_host
+    cert_new: /volume1/dockerdata/dnsrobocert/letsencrypt/live/idrac/
+
+  tasks:
+    #Install IDRAC admin on Ubuntu:
+    - name: Install required packages
+      apt:
+        pkg:
+          - gpg
+          - libssl-dev
+        state: latest
+
+    - name: Run update and install of racadm
+      apt:
+        name: srvadmin-idracadm8
+        state: latest
+        update_cache: yes
+
+    # get the symlink for the privkey of latest certificate
+    - name: Get the proper filename from the symlink on NAS
+      stat:
+        path: "{{ cert_new }}privkey.pem"
+        checksum_algorithm: sha1
+      delegate_to: nas.teekens.info
+      register: newcert
+    #    - debug: var=newcert
+
+    #perform a sha1 hash on the actual filename
+    - name: Checksum for new cert filename using previous stat result
+      stat:
+        path: "{{ newcert.stat.lnk_source }}"
+        checksum_algorithm: sha1
+      delegate_to: nas.teekens.info
+      register: newcert
+
+    #perform a sha1 hash on current certificate
+    - name: Checksum for actual cert fails when file are identical, so no new certs
+      stat:
+        path: "{{ cert_tmp }}privkey.pem"
+        checksum_algorithm: sha1
+      register: currcert
+
+    #block to execute is the hashes differ (and thus a new certificate is avalable)
+    - block:
+        - name: Find symlinks #get the links to the new certificates
+          find:
+            paths: "{{ cert_new }}"
+            file_type: link
+          delegate_to: nas.teekens.info
+          register: files_2_fetch
+
+        - name: Create a directory #Create directory to hold the new certs (not sure if needed here)
+          file:
+            path: "{{ cert_ans }}"
+            state: directory
+          delegate_to: localhost
+
+        - name: use fetch to get the files #Get the new certificate file
+          fetch:
+            src: "{{ item.path }}"
+            dest: "{{ cert_ans }}"
+            flat: yes
+          with_items: "{{ files_2_fetch.files }}"
+          delegate_to: nas.teekens.info
+
+        - name: Find certificate files locally
+          find:
+            paths: "{{ cert_ans }}"
+            file_type: file
+          delegate_to: localhost
+          register: files_2_copy
+
+        #    - debug: var=files_2_copy
+        - name: copy the certificate to controlplane
+          copy:
+            src: "{{ item.path }}"
+            dest: "{{ cert_tmp }}"
+            owner: root
+            group: root
+            mode: "0644"
+            backup: yes
+          with_items: "{{ files_2_copy.files }}"
+
+        - name: Run racadm to import privkey.pem
+          shell: racadm -r idrac-1.nilab.io -u root -p Admin@123 sslkeyupload -f {{ cert_tmp }}privkey.pem -t 1
+        #          register: privkeyUpload_output
+        #        - debug: var=privkeyUpload_output
+
+        - name: Run racadm to import fullchain.pem
+          shell: racadm -r idrac-1.nilab.io -u root -p Admin@123 sslcertupload -f {{ cert_tmp }}fullchain.pem -t 1
+        #          register: fullchainUpload_output
+        #        - debug: var=fullchainUpload_output
+
+        - name: Run racadm to soft reset
+          shell: racadm -r idrac-1.nilab.io -u root -p Admin@123 racreset soft -f
+      #          register: idracReset_output
+      #        - debug: var=idracReset_output
+      when: newcert.stat.checksum != currcert.stat.checksum

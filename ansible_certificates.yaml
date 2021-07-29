@@ -7,3 +7,6 @@
 
 #Synology
 - ansible.builtin.import_playbook: synology/syno_cert.yaml
+
+#Idrac
+- ansible.builtin.import_playbook: idrac/idrac_cert.yaml
