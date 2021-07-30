@@ -1,0 +1,4 @@
+vcenter_hostname: <<hostname>>
+base_cert_location: <<where are new certificates stored>>
+vcenter_username: <<username>>
+vcenter_password: <<password>>

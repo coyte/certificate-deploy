@@ -1,0 +1,154 @@
+#NOT FINISHED - WORK IN PROGRESS
+- name: vcenter certificate check and update
+  hosts: controlplane.teekens.info #we will make the API call from this host
+  vars:
+    cert_tmp: /root/cert_tmp/vcenter02.teekens.info/ #Store cert file on conrolplane
+    cert_ans: /tmp/vcenter02.teekens.info/ #Store cert file on ansible_host
+  #    cert_new: /volume1/dockerdata/dnsrobocert/letsencrypt/live/vcenter02.teekens.info/
+
+  tasks:
+    # Include variables to work with vcenter
+    - name: Include vars of stuff.yaml into the 'stuff' variable (2.2).
+      include_vars:
+        file: vcenter_vars.yaml
+
+    # get the symlink for the privkey of latest certificate
+    - name: Get the proper filename from the symlink on NAS
+      stat:
+        path: "{{ base_cert_location }}{{ vcenter_hostname }}/privkey.pem"
+        checksum_algorithm: sha1
+      delegate_to: nas.teekens.info
+      register: newcert
+    - debug: var=newcert
+
+    #perform a sha1 hash on the actual filename
+    - name: Checksum for new cert filename using previous stat result
+      stat:
+        path: "{{ newcert.stat.lnk_source }}"
+        checksum_algorithm: sha1
+      delegate_to: nas.teekens.info
+      register: newcert
+    - debug: var=newcert
+    #perform a sha1 hash on current certificate
+    - name: Checksum for actual cert fails when file are identical, so no new certs
+      stat:
+        path: "{{ cert_tmp }}privkey.pem"
+        checksum_algorithm: sha1
+      register: currcert
+    - debug: var=currcert
+
+    #    - meta: end_play
+    #block to execute is the hashes differ (and thus a new certificate is avalable)
+    - block:
+        - name: Find symlinks #get the links to the new certificates
+          find:
+            paths: "{{ base_cert_location }}{{ vcenter_hostname }}/"
+            file_type: link
+          delegate_to: nas.teekens.info
+          register: files_2_fetch
+
+        - name: Create a directory #Create directory to hold the new certs (not sure if needed here)
+          file:
+            path: "{{ cert_ans }}"
+            state: directory
+          delegate_to: localhost
+
+        - name: use fetch to get the files #Get the new certificate file
+          fetch:
+            src: "{{ item.path }}"
+            dest: "{{ cert_ans }}"
+            flat: yes
+          with_items: "{{ files_2_fetch.files }}"
+          delegate_to: nas.teekens.info
+
+        - name: Find certificate files locally
+          find:
+            paths: "{{ cert_ans }}"
+            file_type: file
+          delegate_to: localhost
+          register: files_2_copy
+
+        - debug: var=files_2_copy
+        - name: copy the certificate to controlplane
+          copy:
+            src: "{{ item.path }}"
+            dest: "{{ cert_tmp }}"
+            owner: root
+            group: root
+            mode: "0644"
+            backup: yes
+          with_items: "{{ files_2_copy.files }}"
+
+        - name: Run shell cmd
+          shell: pwd
+          register: output
+        - debug: var=output
+
+        # WATCH OUT THESE URI: TASKS ARE EXECUTED LOCALLY
+        - name: Get authentication cookie
+          uri:
+            url: "https://{{ vcenter_hostname }}/rest/com/vmware/cis/session"
+            method: POST
+            user: "{{ vcenter_username }}"
+            password: "{{ vcenter_password }}"
+            validate_certs: no
+            force_basic_auth: yes
+            status_code: 200,404
+            timeout: 10
+          delegate_to: controlplane.teekens.info
+          register: session_cookie
+        - debug: var=session_cookie
+
+        - name: Upload Trusted CA
+          uri:
+            url: "https://{{ vcenter_hostname }}/rest/vcenter/certificate-management/vcenter/trusted-root-chains/"
+            method: POST
+            validate_certs: no
+            return_content: yes
+            status_code: 200
+            timeout: 10
+            headers:
+              vmware-api-session-id: "{{ session_cookie.cookies['vmware-api-session-id'] }}"
+              Content-Type: application/json
+            body_format: json
+            body:
+              {
+                "spec":
+                  {
+                    "cert_chain":
+                      {
+                        "cert_chain":
+                          [
+                            "{{ lookup('file', '/tmp/vcenter02.teekens.info/fullchain.pem')| trim }}",
+                          ],
+                      },
+                  },
+              }
+          delegate_to: controlplane.teekens.info
+          register: upload_trusted_ca_output
+          ignore_errors: true
+        - debug: var=upload_trusted_ca_output
+
+        - meta: end_play
+
+        - name: Upload VCENTER's KEY and CRT
+          uri:
+            url: "https://{{ vcenter_hostname }}/rest/vcenter/certificate-management/vcenter/tls"
+            method: PUT
+            validate_certs: no
+            return_content: yes
+            status_code: 200
+            timeout: 10
+            headers:
+              vmware-api-session-id: "{{ session_cookie.cookies['vmware-api-session-id'] }}"
+              Content-Type: application/json
+            body_format: json
+            body:
+              {
+                "spec":
+                  {
+                    "cert": "{{ lookup('file', '/tmp/{{ hostvars[inventory_hostname].vars.vcenter_hostname }}.crt')| trim }}",
+                    "key": "{{ lookup('file', '/tmp/{{ hostvars[inventory_hostname].vars.vcenter_hostname }}-noRSA.key')| trim }}",
+                  },
+              }
+#      when: newcert.stat.checksum != currcert.stat.checksum
