@@ -1,0 +1,9 @@
+synohost: nas.teekens.info
+certs_path: "./certs"
+crt_common_name: teekens.info
+crt_subject_alt_name: 
+  - "*.teekens.info"
+  - "teekens.info"
+cloudflare_email:     niels@teekens.info
+cloudflare_api_token: 555e28b6d61ef9082a3ba40ff478c06262226
+cloudflare_zone:      teekens.info
